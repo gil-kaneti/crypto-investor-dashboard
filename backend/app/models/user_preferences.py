@@ -19,7 +19,7 @@ class UserPreferences(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     risk_profile: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    preferred_coins: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    preferred_coins: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
