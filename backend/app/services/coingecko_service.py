@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from time import sleep
 
 import httpx
 
@@ -23,6 +24,8 @@ COIN_ID_MAP = {
 }
 
 DEFAULT_COIN_IDS = ["bitcoin", "ethereum", "solana"]
+COINGECKO_TIMEOUT_SECONDS = 8.0
+COINGECKO_RETRY_DELAY_SECONDS = 0.3
 
 FALLBACK_PRICES = {
     "bitcoin": CoinPriceItem(
@@ -59,6 +62,8 @@ FALLBACK_PRICES = {
     ),
 }
 
+_last_successful_sections: dict[tuple[str, ...], CoinPricesSection] = {}
+
 
 def _coin_ids_from_preferences(crypto_assets: list[str]) -> list[str]:
     coin_ids: list[str] = []
@@ -82,28 +87,18 @@ def _fallback_section(coin_ids: list[str]) -> CoinPricesSection:
     )
 
 
-def get_coin_prices(crypto_assets: list[str]) -> CoinPricesSection:
-    coin_ids = _coin_ids_from_preferences(crypto_assets)
-    headers = {}
-    if settings.coingecko_api_key:
-        headers["x-cg-demo-api-key"] = settings.coingecko_api_key
+def _cache_key(coin_ids: list[str]) -> tuple[str, ...]:
+    return tuple(coin_ids)
 
-    try:
-        response = httpx.get(
-            "https://api.coingecko.com/api/v3/coins/markets",
-            params={
-                "vs_currency": "usd",
-                "ids": ",".join(coin_ids),
-                "price_change_percentage": "24h",
-            },
-            headers=headers,
-            timeout=6.0,
-        )
-        response.raise_for_status()
-        payload = response.json()
-    except Exception:
-        return _fallback_section(coin_ids)
 
+def _cached_section(coin_ids: list[str]) -> CoinPricesSection | None:
+    cached = _last_successful_sections.get(_cache_key(coin_ids))
+    if cached is None:
+        return None
+    return cached.model_copy(update={"source": "coingecko_cached", "is_fallback": True}, deep=True)
+
+
+def _live_section(payload: list[dict]) -> CoinPricesSection | None:
     items = [
         CoinPriceItem(
             content_id=f"price-{coin.get('id')}",
@@ -118,7 +113,7 @@ def get_coin_prices(crypto_assets: list[str]) -> CoinPricesSection:
     ]
 
     if not items:
-        return _fallback_section(coin_ids)
+        return None
 
     return CoinPricesSection(
         title="Coin Prices",
@@ -127,3 +122,37 @@ def get_coin_prices(crypto_assets: list[str]) -> CoinPricesSection:
         generated_at=datetime.now(UTC),
         items=items,
     )
+
+
+def _fetch_coingecko_prices(coin_ids: list[str], headers: dict[str, str]) -> list[dict]:
+    response = httpx.get(
+        "https://api.coingecko.com/api/v3/coins/markets",
+        params={
+            "vs_currency": "usd",
+            "ids": ",".join(coin_ids),
+            "price_change_percentage": "24h",
+        },
+        headers=headers,
+        timeout=COINGECKO_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def get_coin_prices(crypto_assets: list[str]) -> CoinPricesSection:
+    coin_ids = _coin_ids_from_preferences(crypto_assets)
+    headers = {}
+    if settings.coingecko_api_key:
+        headers["x-cg-demo-api-key"] = settings.coingecko_api_key
+
+    for attempt in range(2):
+        try:
+            section = _live_section(_fetch_coingecko_prices(coin_ids, headers))
+            if section is not None:
+                _last_successful_sections[_cache_key(coin_ids)] = section
+                return section
+        except Exception:
+            if attempt == 0:
+                sleep(COINGECKO_RETRY_DELAY_SECONDS)
+
+    return _cached_section(coin_ids) or _fallback_section(coin_ids)
