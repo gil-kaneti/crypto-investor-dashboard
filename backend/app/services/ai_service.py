@@ -18,6 +18,7 @@ FALLBACK_INSIGHT = (
 
 
 def _fallback_section() -> AIInsightSection:
+    # Keep the dashboard useful without consuming paid/free AI quota or exposing users to failed provider calls.
     return AIInsightSection(
         title="AI Insight of the Day",
         source="safe_fallback",

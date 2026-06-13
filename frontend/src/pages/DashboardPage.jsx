@@ -28,6 +28,7 @@ function formatCurrency(value) {
 }
 
 async function loadInitialDashboardData() {
+  // Guard against duplicate initial requests caused by React re-renders during route/auth checks.
   if (!initialDashboardLoadPromise) {
     const loadPromise = Promise.resolve().then(async () => {
       const preferences = await api.getPreferences();
@@ -212,6 +213,7 @@ function CoinPricesCard({ section, onSectionUpdate }) {
     }
   }, [onSectionUpdate]);
 
+  // Prices refresh independently so news, AI insight, and meme content remain stable on the dashboard.
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       setSecondsLeft((current) => Math.max(current - 1, 0));

@@ -50,6 +50,7 @@ def get_market_news(crypto_assets: list[str]) -> MarketNewsSection:
     if not settings.cryptopanic_api_key:
         return _fallback_section()
 
+    # CryptoPanic is optional for the assignment; any provider issue returns static reviewer-safe news.
     currencies = ",".join(asset.upper() for asset in crypto_assets[:5] if asset.strip())
     params = {
         "auth_token": settings.cryptopanic_api_key,

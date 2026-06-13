@@ -1,10 +1,27 @@
-# Crypto Investor Dashboard
+# Personalized Crypto Investor Dashboard
 
-Full-stack foundation for the personalized crypto investor dashboard assignment.
+A full-stack assignment project for a personalized crypto investor dashboard. Users can sign up, complete onboarding preferences, view a personalized dashboard, refresh live coin prices, and submit feedback on dashboard content.
 
-## Backend Setup
+## Features
 
-On Windows, use the Python launcher (`py`) so you do not accidentally hit the Microsoft Store `python` alias.
+- Email/password signup and login with JWT-protected routes
+- Onboarding preferences for investor type, selected assets, and content interests
+- Personalized dashboard with four sections: Market News, Coin Prices, AI Insight of the Day, and Fun Crypto Meme
+- Live CoinGecko price data with a dedicated price-only refresh endpoint
+- Optional CryptoPanic and OpenRouter integrations with safe static/fallback behavior
+- Feedback voting stored in PostgreSQL for future personalization improvements
+- React/Vite frontend with desktop-first plain CSS UI
+
+## Tech Stack
+
+- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL, PyJWT
+- Frontend: React, Vite, React Router, plain CSS
+- External data: CoinGecko, optional CryptoPanic, optional OpenRouter
+- Deployment target: Render backend, Render PostgreSQL, Vercel frontend
+
+## Local Setup
+
+### Backend
 
 ```powershell
 cd backend
@@ -12,331 +29,189 @@ py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
-
-## Environment
-
-Copy the example environment file and update values for your local PostgreSQL database:
-
-```powershell
 Copy-Item ..\.env.example .env
 ```
 
-Required variables:
-
-- `DATABASE_URL`: PostgreSQL SQLAlchemy URL, for example `postgresql+psycopg://postgres:postgres@localhost:5432/crypto_dashboard`
-- `APP_NAME`: FastAPI application title
-- `ENVIRONMENT`: Local environment label
-- `DEBUG`: FastAPI debug flag
-- `JWT_SECRET_KEY`: Long random secret used to sign JWT access tokens
-- `JWT_ALGORITHM`: JWT signing algorithm, for example `HS256`
-- `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: Access token lifetime in minutes
-
-Optional variables:
-
-- `COINGECKO_API_KEY`: Optional CoinGecko demo/API key. Public CoinGecko requests are attempted without it.
-- `CRYPTOPANIC_API_KEY`: Optional CryptoPanic key for live market news. Static local fallback news is used when missing or failing.
-- `OPENROUTER_API_KEY`: Optional OpenRouter key for the AI insight. Safe fallback insight is used when missing, invalid, rate-limited, quota-limited, or failing.
-- `OPENROUTER_MODEL`: Optional OpenRouter model name. Defaults to `openai/gpt-4o-mini`.
-
-## Run The Backend
-
-From the `backend` directory:
+Update `backend/.env` with a local PostgreSQL `DATABASE_URL` and a long random `JWT_SECRET_KEY`, then run migrations and start the API:
 
 ```powershell
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-The API will be available at:
+Backend local URLs:
 
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`
 
-The backend allows local frontend requests from:
-
-- `http://127.0.0.1:5173`
-- `http://localhost:5173`
-
-## Frontend Setup
-
-The frontend lives in `frontend/` and uses React, Vite, and plain CSS.
-
-Create a local frontend env file:
+### Frontend
 
 ```powershell
 cd frontend
 Copy-Item .env.example .env
-```
-
-Expected frontend variable:
-
-```text
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
-
-Install dependencies and run the Vite dev server:
-
-```powershell
 npm install
 npm run dev
 ```
 
-The frontend will be available at:
+Frontend local URL:
 
 - `http://127.0.0.1:5173`
 
-## Database Migrations
-
-Make sure PostgreSQL is running and the database named in `DATABASE_URL` exists.
-The example credentials in `.env.example` are placeholders; replace them with your local PostgreSQL username, password, host, port, and database name.
-
-From the `backend` directory:
+For production builds:
 
 ```powershell
+npm run build
+```
+
+Vite outputs the production bundle to `frontend/dist`.
+
+## Environment Variables
+
+Backend variables:
+
+- `DATABASE_URL`: SQLAlchemy PostgreSQL URL, for example `postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME`
+- `APP_NAME`: FastAPI title
+- `ENVIRONMENT`: environment label such as `local` or `production`
+- `DEBUG`: `false` for production
+- `JWT_SECRET_KEY`: long random JWT signing secret
+- `JWT_ALGORITHM`: usually `HS256`
+- `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: token lifetime
+- `CORS_ALLOWED_ORIGINS`: comma-separated frontend origins, for example `http://127.0.0.1:5173,https://your-app.vercel.app`
+- `COINGECKO_API_KEY`: optional CoinGecko key
+- `CRYPTOPANIC_API_KEY`: optional CryptoPanic key
+- `OPENROUTER_API_KEY`: optional OpenRouter key
+- `OPENROUTER_MODEL`: optional model name; defaults to `openai/gpt-4o-mini`
+
+Frontend variable:
+
+- `VITE_API_BASE_URL`: backend base URL, for example `http://127.0.0.1:8000` locally or `https://your-api.onrender.com` in Vercel
+
+Do not commit `.env` files or real credentials.
+
+## API and Data Behavior
+
+- `GET /dashboard` returns the full normalized dashboard.
+- `GET /dashboard/coin-prices` returns only the Coin Prices section so the frontend can refresh prices every 60 seconds without replacing news, AI insight, or meme content.
+- `POST /feedback` stores thumbs up/down feedback by user, section, content ID, vote, and optional message.
+- CoinGecko live prices are attempted by default and fall back to safe static rows if unavailable.
+- CryptoPanic is optional. When no key is configured, or the provider fails, the app uses `backend/app/data/static_news.json`.
+- OpenRouter is optional. It was designed for a free model path, and the app uses a safe educational fallback when no key is configured or the provider fails.
+- Memes rotate from `backend/app/data/memes.json`; no scraping is used.
+
+## Deployment
+
+### Render PostgreSQL
+
+1. Create a Render PostgreSQL database.
+2. Keep the internal connection string/private database details in Render and private submission notes only.
+3. Use a SQLAlchemy-compatible URL in the backend `DATABASE_URL`, for example `postgresql+psycopg://USER:PASSWORD@HOST:5432/DB_NAME`.
+4. Do not commit the database URL.
+
+### Render Backend
+
+Create a Render Web Service from the repository:
+
+- Root directory: `backend`
+- Runtime: Python
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+Set backend environment variables in Render:
+
+- `DATABASE_URL`
+- `APP_NAME=Crypto Investor Dashboard API`
+- `ENVIRONMENT=production`
+- `DEBUG=false`
+- `JWT_SECRET_KEY`
+- `JWT_ALGORITHM=HS256`
+- `JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60`
+- `CORS_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app`
+- optional provider keys if used
+
+Run production migrations after the database is attached:
+
+```bash
+cd backend
 alembic upgrade head
 ```
 
-To create future migrations after model changes:
+If Render runs commands from the `backend` root, run only:
 
-```powershell
-alembic revision --autogenerate -m "describe change"
-```
-
-## Authentication
-
-This backend uses simple bearer JWT authentication for the assignment. It does not use OAuth, third-party login, session cookies, refresh tokens, email verification, or password reset flows.
-
-Passwords are hashed with bcrypt before storage. JWT access tokens are signed with the `JWT_SECRET_KEY` value from your environment.
-
-The frontend stores the JWT access token in `localStorage` for this demo and automatically sends it as `Authorization: Bearer <token>` on protected API requests. Production apps should consider stronger storage patterns such as httpOnly secure cookies.
-
-Frontend auth flow:
-
-- Signup calls `POST /auth/register`, then logs in with the submitted email/password using `POST /auth/login` because the backend registration response does not return a token.
-- Login calls `POST /auth/login`, stores the returned token, fetches `/auth/me`, then checks `/preferences`.
-- If `/preferences` returns no saved preference row (`id: null`), the user is routed to onboarding. New signups go directly there after the automatic login succeeds.
-- If preferences exist, the user is routed to the dashboard.
-- Logout clears the local token and returns the user to login.
-
-Auth endpoints:
-
-- `POST /auth/register`: Creates a user with `name`, `email`, and `password`
-- `POST /auth/login`: Accepts JSON `email` and `password`, returns a bearer access token
-- `GET /auth/me`: Returns the current authenticated user
-
-Preference endpoints:
-
-- `GET /preferences`: Returns the current user's onboarding preferences
-- `PUT /preferences`: Creates or updates onboarding preferences
-
-Dashboard endpoints:
-
-- `GET /dashboard`: Requires bearer auth and returns exactly four normalized sections: `market_news`, `coin_prices`, `ai_insight`, and `crypto_meme`
-- `GET /dashboard/coin-prices`: Requires bearer auth and returns only the normalized `coin_prices` section for independent price refreshes
-- `POST /feedback`: Requires bearer auth and stores thumbs up/down section feedback for future improvements
-
-## Frontend Dashboard Behavior
-
-The dashboard renders the normalized backend response only. It expects exactly four section IDs:
-
-- `market_news`
-- `coin_prices`
-- `ai_insight`
-- `crypto_meme`
-
-The frontend loads the full dashboard with `GET /dashboard` on dashboard page load. After preferences are changed, the user returns to the dashboard and the full dashboard is loaded again.
-
-Coin Prices refresh independently from the rest of the dashboard. The Coin Prices card includes a `Refresh prices` button and a `Next price refresh in Xs` countdown. Every 60 seconds, the frontend calls `GET /dashboard/coin-prices` and replaces only the `coin_prices` section in local state. Market News, AI Insight, and Crypto Meme are not visually refreshed by the 60-second price timer.
-
-The API responses include technical fields such as `source` and `is_fallback` so reviewers can verify provider/fallback behavior through Swagger or direct API calls. The main dashboard UI does not show those source/fallback labels prominently, so the product experience stays user-facing rather than debug-oriented.
-
-Each dashboard card supports thumbs up/down feedback through `POST /feedback`. The frontend sends `section_id`, the available `content_id`, and the selected vote.
-
-Example request bodies:
-
-```json
-{
-  "name": "Ada Lovelace",
-  "email": "ada@example.com",
-  "password": "strong-password"
-}
-```
-
-```json
-{
-  "email": "ada@example.com",
-  "password": "strong-password"
-}
-```
-
-```json
-{
-  "crypto_assets": ["BTC", "ETH", "SOL"],
-  "investor_type": "HODLer",
-  "content_preferences": ["Market News", "Charts", "Fun"]
-}
-```
-
-Use the login response token as:
-
-```text
-Authorization: Bearer <access_token>
-```
-
-Example dashboard response shape:
-
-```json
-{
-  "user_id": 1,
-  "generated_at": "2026-06-13T10:00:00Z",
-  "preferences": {
-    "crypto_assets": ["BTC", "ETH", "SOL"],
-    "investor_type": "HODLer",
-    "content_preferences": ["Market News", "Fun"]
-  },
-  "sections": [
-    {
-      "section_id": "market_news",
-      "title": "Market News",
-      "source": "static_fallback",
-      "is_fallback": true,
-      "generated_at": "2026-06-13T10:00:00Z",
-      "items": []
-    },
-    {
-      "section_id": "coin_prices",
-      "title": "Coin Prices",
-      "source": "coingecko",
-      "is_fallback": false,
-      "generated_at": "2026-06-13T10:00:00Z",
-      "items": []
-    },
-    {
-      "section_id": "ai_insight",
-      "title": "AI Insight of the Day",
-      "source": "safe_fallback",
-      "is_fallback": true,
-      "generated_at": "2026-06-13T10:00:00Z",
-      "content_id": "ai-insight-fallback",
-      "insight": "Educational crypto context...",
-      "disclaimer": "Educational information only. Not financial advice."
-    },
-    {
-      "section_id": "crypto_meme",
-      "title": "Fun Crypto Meme",
-      "source": "static_json",
-      "is_fallback": false,
-      "generated_at": "2026-06-13T10:00:00Z",
-      "content_id": "meme-buy-high-sell-low",
-      "caption": "When your strategy says DCA...",
-      "image_url": "https://placehold.co/800x450/png?text=Crypto+Meme",
-      "alt_text": "Crypto meme placeholder"
-    }
-  ]
-}
-```
-
-Example feedback request:
-
-```json
-{
-  "section_id": "market_news",
-  "content_id": "fallback-news-bitcoin-etf-flows",
-  "vote": "thumbs_up",
-  "comment": "Useful summary"
-}
-```
-
-## Manual Test Checklist
-
-From the `backend` directory:
-
-```powershell
-python -m pip install -r requirements.txt
+```bash
 alembic upgrade head
-uvicorn app.main:app --reload
 ```
 
-Then verify:
+### Vercel Frontend
 
-- `GET http://127.0.0.1:8000/health` returns `{"status":"ok"}`
-- `http://127.0.0.1:8000/docs` loads
-- `POST /auth/register` creates a new user
-- Registering the same email again returns a clean duplicate-email error
-- `POST /auth/login` returns an `access_token`
-- Logging in with an invalid password returns `401`
-- `GET /auth/me` without a token returns `401`
-- `GET /auth/me` with `Authorization: Bearer <token>` returns the user profile
-- `GET /preferences` with a token returns empty/default onboarding preferences before setup
-- `PUT /preferences` with a token saves assets, investor type, and content preferences
-- `GET /preferences` returns the saved values
-- `GET /dashboard` without a token returns `401`
-- `GET /dashboard` with `Authorization: Bearer <token>` returns four sections
-- `GET /dashboard/coin-prices` with `Authorization: Bearer <token>` returns the price section only
-- The dashboard still returns valid JSON when optional provider keys are omitted
-- `POST /feedback` with `thumbs_up` or `thumbs_down` stores feedback for each dashboard section
+Create a Vercel project from the repository:
 
-Frontend manual verification:
+- Root directory: `frontend`
+- Framework preset: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variable: `VITE_API_BASE_URL=https://your-render-api.onrender.com`
 
-- Start the backend at `http://127.0.0.1:8000`
-- Start the frontend at `http://127.0.0.1:5173`
-- Open the frontend and create a new account
-- Confirm signup automatically logs in and routes directly to onboarding
-- For an existing account, login and confirm the app routes to onboarding when preferences are missing
-- Complete onboarding and save preferences
-- Confirm the dashboard loads four sections: Market News, Coin Prices, AI Insight of the Day, and Fun Crypto Meme
-- Confirm the dashboard header has no global refresh controls
-- Click `Refresh prices` inside Coin Prices and confirm only prices update
-- Confirm the `Next price refresh in 60s` countdown ticks down and resets after price refresh
-- Confirm Market News, AI Insight, and Crypto Meme do not visibly refresh on the 60-second price timer
-- Vote thumbs up/down on each dashboard card and confirm the thank-you state appears
-- Use `Edit Preferences`, confirm existing preferences are prefilled, save changes, and return to the dashboard
-- Logout and confirm the app returns to login
+After Vercel deployment, update Render `CORS_ALLOWED_ORIGINS` with the final Vercel URL and redeploy the backend if needed.
 
-Example PowerShell flow:
+## Reviewer Demo and DB Access
 
-```powershell
-$token = "<access_token>"
-Invoke-RestMethod http://127.0.0.1:8000/dashboard -Headers @{ Authorization = "Bearer $token" }
-Invoke-RestMethod http://127.0.0.1:8000/feedback `
-  -Method Post `
-  -Headers @{ Authorization = "Bearer $token" } `
-  -ContentType "application/json" `
-  -Body '{"section_id":"market_news","content_id":"fallback-news-bitcoin-etf-flows","vote":"thumbs_up","comment":"Useful"}'
-```
+After deployment, I will create a reviewer demo user through the normal signup/onboarding flow. The app URL, demo credentials, and full PostgreSQL DB access details will be shared privately in the assignment submission, not committed to GitHub.
 
-## Database Verification
+Production DB access will be provided through Render PostgreSQL external connection details. Keep local test data separate from production data and never commit credentials.
 
-Open PostgreSQL with your local credentials:
-
-```powershell
-psql -d crypto_dashboard
-```
-
-Inspect the stored rows:
+Useful reviewer SQL:
 
 ```sql
-SELECT id, email, display_name, hashed_password FROM users;
+SELECT id, email, display_name, created_at FROM users;
 SELECT user_id, risk_profile, preferred_coins, settings FROM user_preferences;
-SELECT id, user_id, section_id, content_id, vote, message, created_at FROM feedback ORDER BY id DESC;
+SELECT user_id, section_id, content_id, vote, message, created_at
+FROM feedback
+ORDER BY created_at DESC;
 ```
 
-Confirm `hashed_password` starts with a bcrypt prefix such as `$2b$` and does not contain the plaintext password.
+The production database can be clean except for a demo user and a few feedback rows generated during QA.
 
-Confirm ignored local environment files are not tracked:
+## Final QA Checklist
+
+- Backend starts locally with `uvicorn app.main:app --reload`
+- Frontend starts locally with `npm run dev`
+- Frontend build passes with `npm run build`
+- Signup and login work
+- Onboarding preferences save and load
+- Dashboard loads Market News, Coin Prices, AI Insight of the Day, and Fun Crypto Meme
+- Coin Prices refresh manually and every 60 seconds
+- Feedback voting stores rows in PostgreSQL
+- Edit Preferences returns to dashboard with updated data
+- Logout and protected route behavior work
+- Render backend health/docs URLs work after deployment
+- Vercel frontend can call the deployed backend
+- Render/Vercel environment variables are configured
+- No secrets, API keys, or DB credentials are committed
+
+## Secrets Audit
+
+`.gitignore` excludes root `.env`, `backend/.env`, `frontend/.env`, `backend/.venv/`, `frontend/node_modules/`, and `frontend/dist/`. The committed env files are examples only and contain placeholders.
+
+Before final submission, run:
 
 ```powershell
 git status --short
+git ls-files | Select-String "\.env$"
+rg -n "sk-[A-Za-z0-9_-]{20,}|OPENROUTER_API_KEY=sk|CRYPTOPANIC_API_KEY=[A-Za-z0-9]{20,}|JWT_SECRET_KEY=[A-Za-z0-9_-]{32,}|DATABASE_URL=postgresql.*://[a-z0-9_]+:[^@]+@" --glob "!README.md"
 ```
 
-## Provider Fallback Behavior
+The expected result is no committed real API keys, JWT secrets, or database credentials.
 
-All provider responses are normalized before returning to the frontend. Raw CoinGecko, CryptoPanic, and OpenRouter payloads are not exposed.
+## Bonus: Future Model Improvement
 
-- CoinGecko failures return a valid `coin_prices` section with fallback coin rows and `is_fallback: true`.
-- Missing CryptoPanic key returns local static news from `backend/app/data/static_news.json`.
-- CryptoPanic errors, rate limits, or quota issues also return static fallback news.
-- Missing OpenRouter key returns a safe educational fallback insight.
-- OpenRouter errors, invalid key, rate limits, or quota issues also return the safe fallback insight.
-- AI insight text is educational only and includes a not-financial-advice disclaimer.
-- Memes are selected from `backend/app/data/memes.json`; no scraping is used.
+The stored feedback can support future personalization without adding ML now. Each vote is tied to a user, section, content ID, investor type/preferences context, and selected assets available through joins with `user_preferences`.
+
+Over time, thumbs up/down aggregates could improve ranking of news, AI insights, and memes. The same data could later tune AI prompts or train a lightweight recommendation model. This was intentionally left as future work to keep the assignment focused and avoid over-engineering.
+
+## Known Limitations and Future Work
+
+- CryptoPanic is documented as optional/static fallback behavior; real production news tuning is not expanded here.
+- OpenRouter prompt optimization and model evaluation are future work.
+- CoinGecko caching and rate-limit management are not implemented.
+- No admin panel is included; DB access is handled through Render PostgreSQL.
+- Authentication is assignment-grade JWT with `localStorage`; production apps should consider httpOnly secure cookies, refresh-token handling, email verification, and password reset flows.
