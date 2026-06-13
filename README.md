@@ -1,6 +1,6 @@
 # Crypto Investor Dashboard
 
-Backend foundation for the crypto investor dashboard assignment.
+Full-stack foundation for the personalized crypto investor dashboard assignment.
 
 ## Backend Setup
 
@@ -52,6 +52,39 @@ The API will be available at:
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`
 
+The backend allows local frontend requests from:
+
+- `http://127.0.0.1:5173`
+- `http://localhost:5173`
+
+## Frontend Setup
+
+The frontend lives in `frontend/` and uses React, Vite, and plain CSS.
+
+Create a local frontend env file:
+
+```powershell
+cd frontend
+Copy-Item .env.example .env
+```
+
+Expected frontend variable:
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Install dependencies and run the Vite dev server:
+
+```powershell
+npm install
+npm run dev
+```
+
+The frontend will be available at:
+
+- `http://127.0.0.1:5173`
+
 ## Database Migrations
 
 Make sure PostgreSQL is running and the database named in `DATABASE_URL` exists.
@@ -75,6 +108,16 @@ This backend uses simple bearer JWT authentication for the assignment. It does n
 
 Passwords are hashed with bcrypt before storage. JWT access tokens are signed with the `JWT_SECRET_KEY` value from your environment.
 
+The frontend stores the JWT access token in `localStorage` for this demo and automatically sends it as `Authorization: Bearer <token>` on protected API requests. Production apps should consider stronger storage patterns such as httpOnly secure cookies.
+
+Frontend auth flow:
+
+- Signup calls `POST /auth/register`; because the backend returns a user instead of a token, the frontend redirects to login with a success message.
+- Login calls `POST /auth/login`, stores the returned token, fetches `/auth/me`, then checks `/preferences`.
+- If `/preferences` returns no saved preference row (`id: null`), the user is routed to onboarding.
+- If preferences exist, the user is routed to the dashboard.
+- Logout clears the local token and returns the user to login.
+
 Auth endpoints:
 
 - `POST /auth/register`: Creates a user with `name`, `email`, and `password`
@@ -90,6 +133,19 @@ Dashboard endpoints:
 
 - `GET /dashboard`: Requires bearer auth and returns exactly four normalized sections: `market_news`, `coin_prices`, `ai_insight`, and `crypto_meme`
 - `POST /feedback`: Requires bearer auth and stores thumbs up/down section feedback for future improvements
+
+## Frontend Dashboard Behavior
+
+The dashboard renders the normalized backend response only. It expects exactly four section IDs:
+
+- `market_news`
+- `coin_prices`
+- `ai_insight`
+- `crypto_meme`
+
+The dashboard includes a manual `Refresh now` button and auto-refreshes every 60 seconds while the dashboard page is open. A countdown shows the next refresh time, and the current dashboard stays visible while fresh data is loading. The meme section is fetched again with each dashboard refresh, so it can change naturally whenever the backend returns a different static meme.
+
+Each dashboard card supports thumbs up/down feedback through `POST /feedback`. The frontend sends `section_id`, the available `content_id`, and the selected vote.
 
 Example request bodies:
 
@@ -213,6 +269,22 @@ Then verify:
 - `GET /dashboard` with `Authorization: Bearer <token>` returns four sections
 - The dashboard still returns valid JSON when optional provider keys are omitted
 - `POST /feedback` with `thumbs_up` or `thumbs_down` stores feedback for each dashboard section
+
+Frontend manual verification:
+
+- Start the backend at `http://127.0.0.1:8000`
+- Start the frontend at `http://127.0.0.1:5173`
+- Open the frontend and create a new account
+- Confirm signup redirects to login with a clear success message
+- Login and confirm the app routes to onboarding when preferences are missing
+- Complete onboarding and save preferences
+- Confirm the dashboard loads four sections: Market News, Coin Prices, AI Insight of the Day, and Fun Crypto Meme
+- Click `Refresh now` and confirm the existing dashboard stays visible while refreshing
+- Confirm the `Next refresh in 60s` countdown ticks down and resets after refresh
+- Confirm the meme can change after dashboard refreshes
+- Vote thumbs up/down on each dashboard card and confirm the thank-you state appears
+- Use `Edit Preferences`, confirm existing preferences are prefilled, save changes, and return to the dashboard
+- Logout and confirm the app returns to login
 
 Example PowerShell flow:
 
