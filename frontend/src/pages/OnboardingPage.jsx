@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import LoadingScreen from "../components/LoadingScreen";
 import ProtectedPage from "../components/ProtectedPage";
 
-const ASSETS = ["Bitcoin", "Ethereum", "Solana", "Cardano", "Polygon", "Chainlink"];
+const ASSETS = ["Bitcoin", "Ethereum", "Solana", "Cardano"];
 const INVESTOR_TYPES = ["HODLer", "Day Trader", "NFT Collector"];
 const CONTENT_TYPES = ["Market News", "Charts", "Social", "Fun"];
 
@@ -35,6 +35,7 @@ function ChipGroup({ options, selected, onToggle, single = false }) {
 
 function OnboardingContent() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const [step, setStep] = useState(1);
@@ -47,9 +48,17 @@ function OnboardingContent() {
     content_preferences: [],
   });
   const isEditing = searchParams.get("mode") === "edit";
+  const shouldSkipPreferenceLoad = location.state?.skipPreferenceLoad === true && !isEditing;
 
   useEffect(() => {
     let isMounted = true;
+
+    if (shouldSkipPreferenceLoad) {
+      setIsLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
 
     async function loadPreferences() {
       try {
@@ -57,7 +66,7 @@ function OnboardingContent() {
         if (!isMounted) return;
         if (preferences?.id) {
           setForm({
-            crypto_assets: preferences.crypto_assets || [],
+            crypto_assets: (preferences.crypto_assets || []).filter((asset) => ASSETS.includes(asset)),
             investor_type: preferences.investor_type || "",
             content_preferences: preferences.content_preferences || [],
           });
@@ -73,7 +82,7 @@ function OnboardingContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [shouldSkipPreferenceLoad]);
 
   const canContinue = useMemo(() => {
     if (step === 1) return form.crypto_assets.length > 0;

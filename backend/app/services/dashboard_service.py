@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.models.user_preferences import UserPreferences
-from app.schemas.dashboard import DashboardPreferencesSummary, DashboardResponse
+from app.schemas.dashboard import CoinPricesSection, DashboardPreferencesSummary, DashboardResponse
 from app.services.ai_service import get_ai_insight
 from app.services.coingecko_service import get_coin_prices
 from app.services.meme_service import get_crypto_meme
@@ -41,3 +41,9 @@ def build_dashboard(db: Session, user: User) -> DashboardResponse:
         preferences=summary,
         sections=sections,
     )
+
+
+def build_coin_prices_section(db: Session, user: User) -> CoinPricesSection:
+    preferences = db.scalar(select(UserPreferences).where(UserPreferences.user_id == user.id))
+    summary = _preferences_summary(preferences)
+    return get_coin_prices(summary.crypto_assets)

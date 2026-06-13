@@ -73,6 +73,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getDashboard: () => apiRequest("/dashboard"),
+  getCoinPrices: () => apiRequest("/dashboard/coin-prices"),
   sendFeedback: (payload) =>
     apiRequest("/feedback", {
       method: "POST",

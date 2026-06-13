@@ -6,12 +6,13 @@ import AuthLayout from "../components/AuthLayout";
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRedirectingToOnboarding, setIsRedirectingToOnboarding] = useState(false);
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !isSubmitting && !isRedirectingToOnboarding) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -22,10 +23,13 @@ export default function SignupPage() {
 
     try {
       await api.register(form);
-      navigate("/login", {
-        replace: true,
-        state: { message: "Account created. Log in to continue." },
-      });
+      try {
+        await login({ email: form.email, password: form.password });
+        setIsRedirectingToOnboarding(true);
+        navigate("/onboarding", { replace: true, state: { skipPreferenceLoad: true } });
+      } catch {
+        setError("Account created, but automatic login failed. Please go to login and sign in manually.");
+      }
     } catch (err) {
       setError(err.message);
     } finally {

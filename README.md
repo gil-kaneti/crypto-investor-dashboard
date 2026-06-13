@@ -112,9 +112,9 @@ The frontend stores the JWT access token in `localStorage` for this demo and aut
 
 Frontend auth flow:
 
-- Signup calls `POST /auth/register`; because the backend returns a user instead of a token, the frontend redirects to login with a success message.
+- Signup calls `POST /auth/register`, then logs in with the submitted email/password using `POST /auth/login` because the backend registration response does not return a token.
 - Login calls `POST /auth/login`, stores the returned token, fetches `/auth/me`, then checks `/preferences`.
-- If `/preferences` returns no saved preference row (`id: null`), the user is routed to onboarding.
+- If `/preferences` returns no saved preference row (`id: null`), the user is routed to onboarding. New signups go directly there after the automatic login succeeds.
 - If preferences exist, the user is routed to the dashboard.
 - Logout clears the local token and returns the user to login.
 
@@ -132,6 +132,7 @@ Preference endpoints:
 Dashboard endpoints:
 
 - `GET /dashboard`: Requires bearer auth and returns exactly four normalized sections: `market_news`, `coin_prices`, `ai_insight`, and `crypto_meme`
+- `GET /dashboard/coin-prices`: Requires bearer auth and returns only the normalized `coin_prices` section for independent price refreshes
 - `POST /feedback`: Requires bearer auth and stores thumbs up/down section feedback for future improvements
 
 ## Frontend Dashboard Behavior
@@ -143,7 +144,11 @@ The dashboard renders the normalized backend response only. It expects exactly f
 - `ai_insight`
 - `crypto_meme`
 
-The dashboard includes a manual `Refresh now` button and auto-refreshes every 60 seconds while the dashboard page is open. A countdown shows the next refresh time, and the current dashboard stays visible while fresh data is loading. The meme section is fetched again with each dashboard refresh, so it can change naturally whenever the backend returns a different static meme.
+The frontend loads the full dashboard with `GET /dashboard` on dashboard page load. After preferences are changed, the user returns to the dashboard and the full dashboard is loaded again.
+
+Coin Prices refresh independently from the rest of the dashboard. The Coin Prices card includes a `Refresh prices` button and a `Next price refresh in Xs` countdown. Every 60 seconds, the frontend calls `GET /dashboard/coin-prices` and replaces only the `coin_prices` section in local state. Market News, AI Insight, and Crypto Meme are not visually refreshed by the 60-second price timer.
+
+The API responses include technical fields such as `source` and `is_fallback` so reviewers can verify provider/fallback behavior through Swagger or direct API calls. The main dashboard UI does not show those source/fallback labels prominently, so the product experience stays user-facing rather than debug-oriented.
 
 Each dashboard card supports thumbs up/down feedback through `POST /feedback`. The frontend sends `section_id`, the available `content_id`, and the selected vote.
 
@@ -267,6 +272,7 @@ Then verify:
 - `GET /preferences` returns the saved values
 - `GET /dashboard` without a token returns `401`
 - `GET /dashboard` with `Authorization: Bearer <token>` returns four sections
+- `GET /dashboard/coin-prices` with `Authorization: Bearer <token>` returns the price section only
 - The dashboard still returns valid JSON when optional provider keys are omitted
 - `POST /feedback` with `thumbs_up` or `thumbs_down` stores feedback for each dashboard section
 
@@ -275,13 +281,14 @@ Frontend manual verification:
 - Start the backend at `http://127.0.0.1:8000`
 - Start the frontend at `http://127.0.0.1:5173`
 - Open the frontend and create a new account
-- Confirm signup redirects to login with a clear success message
-- Login and confirm the app routes to onboarding when preferences are missing
+- Confirm signup automatically logs in and routes directly to onboarding
+- For an existing account, login and confirm the app routes to onboarding when preferences are missing
 - Complete onboarding and save preferences
 - Confirm the dashboard loads four sections: Market News, Coin Prices, AI Insight of the Day, and Fun Crypto Meme
-- Click `Refresh now` and confirm the existing dashboard stays visible while refreshing
-- Confirm the `Next refresh in 60s` countdown ticks down and resets after refresh
-- Confirm the meme can change after dashboard refreshes
+- Confirm the dashboard header has no global refresh controls
+- Click `Refresh prices` inside Coin Prices and confirm only prices update
+- Confirm the `Next price refresh in 60s` countdown ticks down and resets after price refresh
+- Confirm Market News, AI Insight, and Crypto Meme do not visibly refresh on the 60-second price timer
 - Vote thumbs up/down on each dashboard card and confirm the thank-you state appears
 - Use `Edit Preferences`, confirm existing preferences are prefilled, save changes, and return to the dashboard
 - Logout and confirm the app returns to login

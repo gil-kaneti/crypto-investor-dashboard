@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const signupMessage = location.state?.message;
 
-  if (isAuthenticated) {
+  if (isAuthenticated && !isSubmitting) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -6,6 +6,7 @@ import LoadingScreen from "../components/LoadingScreen";
 import ProtectedPage from "../components/ProtectedPage";
 
 const REFRESH_SECONDS = 60;
+let initialDashboardLoadPromise = null;
 
 function formatDateTime(value) {
   if (!value) return "Recently";
@@ -26,9 +27,59 @@ function formatCurrency(value) {
   }).format(value);
 }
 
+async function loadInitialDashboardData() {
+  if (!initialDashboardLoadPromise) {
+    const loadPromise = Promise.resolve().then(async () => {
+      const preferences = await api.getPreferences();
+      if (!preferences?.id) {
+        return { needsOnboarding: true, dashboard: null };
+      }
+
+      const dashboard = await api.getDashboard();
+      return { needsOnboarding: false, dashboard };
+    });
+
+    initialDashboardLoadPromise = loadPromise;
+    loadPromise.finally(() => {
+      window.setTimeout(() => {
+        if (initialDashboardLoadPromise === loadPromise) {
+          initialDashboardLoadPromise = null;
+        }
+      }, 1000);
+    });
+  }
+
+  return initialDashboardLoadPromise;
+}
+
 function sectionContentId(section) {
   if (section.content_id) return section.content_id;
   return section.items?.[0]?.content_id || null;
+}
+
+function mergeCoinPriceSections(currentSection, nextSection) {
+  if (!currentSection || nextSection.section_id !== "coin_prices") return nextSection;
+
+  const currentItemsBySymbol = new Map(
+    (currentSection.items || []).map((item) => [item.symbol, item]),
+  );
+
+  return {
+    ...nextSection,
+    items: (nextSection.items || []).map((item) => {
+      const currentItem = currentItemsBySymbol.get(item.symbol);
+      if (item.price_usd === null || item.price_usd === undefined) {
+        return {
+          ...currentItem,
+          ...item,
+          price_usd: currentItem?.price_usd ?? item.price_usd,
+          change_24h_percent: currentItem?.change_24h_percent ?? item.change_24h_percent,
+          market_cap_usd: currentItem?.market_cap_usd ?? item.market_cap_usd,
+        };
+      }
+      return item;
+    }),
+  };
 }
 
 function ThumbIcon({ direction }) {
@@ -49,8 +100,11 @@ function FeedbackControls({ section }) {
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
 
   async function vote(voteValue) {
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
     setIsSending(true);
     setStatus("");
     try {
@@ -64,6 +118,7 @@ function FeedbackControls({ section }) {
     } catch (err) {
       setStatus(err.message);
     } finally {
+      isSendingRef.current = false;
       setIsSending(false);
     }
   }
@@ -95,15 +150,14 @@ function FeedbackControls({ section }) {
   );
 }
 
-function CardShell({ section, children, footer }) {
+function CardShell({ section, children, footer, headerAction }) {
   return (
     <article className={`dashboard-card ${section.section_id}`}>
       <header className="card-header">
         <div>
           <h2>{section.title}</h2>
-          <p className="source-line">{section.source?.replaceAll("_", " ") || "Dashboard source"}</p>
         </div>
-        {section.is_fallback ? <span className="badge quiet">Curated</span> : null}
+        {headerAction}
       </header>
       <div className="card-body">{children}</div>
       {footer}
@@ -121,7 +175,7 @@ function MarketNewsCard({ section }) {
           {items.slice(0, 3).map((item) => (
             <a className="news-item" href={item.url || undefined} target="_blank" rel="noreferrer" key={item.content_id}>
               <span>{item.title}</span>
-              <small>{item.source}{item.published_at ? ` · ${formatDateTime(item.published_at)}` : ""}</small>
+              {item.published_at ? <small>{formatDateTime(item.published_at)}</small> : null}
               {item.summary ? <p>{item.summary}</p> : null}
             </a>
           ))}
@@ -133,20 +187,76 @@ function MarketNewsCard({ section }) {
   );
 }
 
-function CoinPricesCard({ section }) {
-  const items = section.items || [];
+function CoinPricesCard({ section, onSectionUpdate }) {
+  const items = (section.items || []).filter((item) => item.symbol && item.name);
+  const [secondsLeft, setSecondsLeft] = useState(REFRESH_SECONDS);
+  const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+  const [priceError, setPriceError] = useState("");
+  const isRefreshingRef = useRef(false);
+  const handledZeroCountdownRef = useRef(false);
+
+  const refreshPrices = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setIsRefreshingPrices(true);
+    setPriceError("");
+    try {
+      const nextSection = await api.getCoinPrices();
+      onSectionUpdate(nextSection);
+    } catch (err) {
+      setPriceError(err.message);
+    } finally {
+      setSecondsLeft(REFRESH_SECONDS);
+      isRefreshingRef.current = false;
+      setIsRefreshingPrices(false);
+    }
+  }, [onSectionUpdate]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setSecondsLeft((current) => Math.max(current - 1, 0));
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (secondsLeft > 0) {
+      handledZeroCountdownRef.current = false;
+      return;
+    }
+
+    if (handledZeroCountdownRef.current) return;
+    handledZeroCountdownRef.current = true;
+    refreshPrices();
+  }, [refreshPrices, secondsLeft]);
+
   return (
     <CardShell
       section={section}
-      footer={<p className="updated-line">Updated at {formatDateTime(section.generated_at)}</p>}
+      headerAction={
+        <button className="button secondary compact" type="button" onClick={refreshPrices} disabled={isRefreshingPrices}>
+          {isRefreshingPrices ? "Refreshing..." : "Refresh prices"}
+        </button>
+      }
+      footer={
+        <div className="price-refresh-footer">
+          <p className="updated-line">Updated at {formatDateTime(section.generated_at)}</p>
+          <p className="countdown-line">Next price refresh in {secondsLeft}s</p>
+          {priceError ? <p className="price-error">{priceError}</p> : null}
+        </div>
+      }
     >
       {items.length ? (
         <div className="price-table">
           {items.map((item) => (
             <div className="price-row" key={item.content_id}>
-              <div>
-                <strong>{item.symbol}</strong>
-                <span>{item.name}</span>
+              <div className="coin-info">
+                <span className={`coin-badge coin-${item.symbol?.toLowerCase()}`}>{item.symbol?.slice(0, 1) || "$"}</span>
+                <div>
+                  <strong>{item.symbol}</strong>
+                  <span>{item.name}</span>
+                </div>
               </div>
               <div className="price-value">
                 <strong>{formatCurrency(item.price_usd)}</strong>
@@ -177,23 +287,31 @@ function AIInsightCard({ section }) {
 }
 
 function MemeCard({ section }) {
+  const isPlaceholderImage =
+    !section.image_url || /placehold|placeholder|dummyimage/i.test(section.image_url);
+
   return (
     <CardShell section={section}>
-      <div className="meme-frame">
-        {section.image_url ? (
+      {isPlaceholderImage ? (
+        <div className="meme-designed">
+          <div className="meme-kicker">Market mood</div>
+          <p>{section.caption}</p>
+        </div>
+      ) : (
+        <div className="meme-frame">
           <img src={section.image_url} alt={section.alt_text || section.caption} />
-        ) : (
-          <div className="meme-placeholder">{section.caption}</div>
-        )}
-      </div>
-      <p className="meme-caption">{section.caption}</p>
+        </div>
+      )}
+      {!isPlaceholderImage ? <p className="meme-caption">{section.caption}</p> : null}
     </CardShell>
   );
 }
 
-function renderSection(section) {
+function renderSection(section, onSectionUpdate) {
   if (section.section_id === "market_news") return <MarketNewsCard section={section} key={section.section_id} />;
-  if (section.section_id === "coin_prices") return <CoinPricesCard section={section} key={section.section_id} />;
+  if (section.section_id === "coin_prices") {
+    return <CoinPricesCard section={section} onSectionUpdate={onSectionUpdate} key={section.section_id} />;
+  }
   if (section.section_id === "ai_insight") return <AIInsightCard section={section} key={section.section_id} />;
   if (section.section_id === "crypto_meme") return <MemeCard section={section} key={section.section_id} />;
   return null;
@@ -204,51 +322,30 @@ function DashboardContent() {
   const { user, logout } = useAuth();
   const [dashboard, setDashboard] = useState(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(REFRESH_SECONDS);
 
   const loadDashboard = useCallback(async ({ initial = false } = {}) => {
     if (initial) {
       setIsInitialLoading(true);
-    } else {
-      setIsRefreshing(true);
     }
     setError("");
 
     try {
-      const preferences = await api.getPreferences();
-      if (!preferences?.id) {
+      const result = await loadInitialDashboardData();
+      if (result.needsOnboarding) {
         navigate("/onboarding", { replace: true });
         return;
       }
-      const data = await api.getDashboard();
-      setDashboard(data);
-      setSecondsLeft(REFRESH_SECONDS);
+      setDashboard(result.dashboard);
     } catch (err) {
       setError(err.message);
     } finally {
       setIsInitialLoading(false);
-      setIsRefreshing(false);
     }
   }, [navigate]);
 
   useEffect(() => {
     loadDashboard({ initial: true });
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setSecondsLeft((current) => {
-        if (current <= 1) {
-          loadDashboard();
-          return REFRESH_SECONDS;
-        }
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
   }, [loadDashboard]);
 
   const sections = useMemo(() => {
@@ -257,6 +354,19 @@ function DashboardContent() {
       .map((sectionId) => byId.get(sectionId))
       .filter(Boolean);
   }, [dashboard]);
+
+  const updateDashboardSection = useCallback((nextSection) => {
+    setDashboard((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        sections: current.sections.map((section) => {
+          if (section.section_id !== nextSection.section_id) return section;
+          return mergeCoinPriceSections(section, nextSection);
+        }),
+      };
+    });
+  }, []);
 
   if (isInitialLoading) {
     return <LoadingScreen label="Loading dashboard" />;
@@ -285,18 +395,13 @@ function DashboardContent() {
           <h1>Welcome{user?.name ? `, ${user.name}` : ""}</h1>
           <p>Your personalized daily crypto dashboard.</p>
         </div>
-        <div className="refresh-panel">
-          <button className="button primary" type="button" onClick={() => loadDashboard()} disabled={isRefreshing}>
-            {isRefreshing ? "Refreshing..." : "Refresh now"}
-          </button>
-          <span>Next refresh in {secondsLeft}s</span>
-        </div>
       </header>
 
       {error ? <div className="notice error dashboard-notice">{error}</div> : null}
-      {isRefreshing ? <p className="refreshing-line">Refreshing dashboard data...</p> : null}
 
-      <section className="dashboard-grid">{sections.map(renderSection)}</section>
+      <section className="dashboard-grid">
+        {sections.map((section) => renderSection(section, updateDashboardSection))}
+      </section>
     </main>
   );
 }
