@@ -25,9 +25,38 @@ COIN_ID_MAP = {
 DEFAULT_COIN_IDS = ["bitcoin", "ethereum", "solana"]
 
 FALLBACK_PRICES = {
-    "bitcoin": CoinPriceItem(content_id="price-bitcoin", symbol="BTC", name="Bitcoin"),
-    "ethereum": CoinPriceItem(content_id="price-ethereum", symbol="ETH", name="Ethereum"),
-    "solana": CoinPriceItem(content_id="price-solana", symbol="SOL", name="Solana"),
+    "bitcoin": CoinPriceItem(
+        content_id="price-bitcoin",
+        symbol="BTC",
+        name="Bitcoin",
+        price_usd=65000,
+        change_24h_percent=0.0,
+        market_cap_usd=1_280_000_000_000,
+    ),
+    "ethereum": CoinPriceItem(
+        content_id="price-ethereum",
+        symbol="ETH",
+        name="Ethereum",
+        price_usd=3500,
+        change_24h_percent=0.0,
+        market_cap_usd=420_000_000_000,
+    ),
+    "solana": CoinPriceItem(
+        content_id="price-solana",
+        symbol="SOL",
+        name="Solana",
+        price_usd=150,
+        change_24h_percent=0.0,
+        market_cap_usd=70_000_000_000,
+    ),
+    "cardano": CoinPriceItem(
+        content_id="price-cardano",
+        symbol="ADA",
+        name="Cardano",
+        price_usd=0.45,
+        change_24h_percent=0.0,
+        market_cap_usd=16_000_000_000,
+    ),
 }
 
 
