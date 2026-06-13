@@ -1,0 +1,26 @@
+[
+  {
+    "content_id": "fallback-news-bitcoin-etf-flows",
+    "title": "Bitcoin ETF flows remain a useful market sentiment signal",
+    "url": "https://www.coindesk.com/markets/",
+    "source": "Static fallback",
+    "published_at": "2026-06-01T00:00:00Z",
+    "summary": "ETF inflows and outflows can help investors understand broad risk appetite, but they should be read alongside liquidity, volatility, and macro conditions."
+  },
+  {
+    "content_id": "fallback-news-ethereum-scaling",
+    "title": "Ethereum scaling activity keeps shifting to layer 2 networks",
+    "url": "https://ethereum.org/en/layer-2/",
+    "source": "Static fallback",
+    "published_at": "2026-06-01T00:00:00Z",
+    "summary": "Layer 2 networks can reduce transaction costs and increase throughput, while still requiring users to understand bridge and smart contract risks."
+  },
+  {
+    "content_id": "fallback-news-solana-developer-activity",
+    "title": "Solana ecosystem watchers continue tracking developer activity",
+    "url": "https://solana.com/news",
+    "source": "Static fallback",
+    "published_at": "2026-06-01T00:00:00Z",
+    "summary": "Developer activity, network reliability, and user demand are common signals used to evaluate high-throughput blockchain ecosystems."
+  }
+]

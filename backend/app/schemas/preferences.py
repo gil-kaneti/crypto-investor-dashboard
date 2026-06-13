@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+from app.schemas.timestamps import utc_z_timestamp
 
 
 class PreferencesBase(BaseModel):
@@ -31,5 +33,9 @@ class PreferencesRead(PreferencesBase):
     user_id: int
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_timestamps(self, value: datetime | None) -> str | None:
+        return utc_z_timestamp(value)
 
     model_config = ConfigDict(from_attributes=True)
