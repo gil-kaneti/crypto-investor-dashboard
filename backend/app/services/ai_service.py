@@ -44,9 +44,12 @@ def _build_prompt(crypto_assets: list[str], investor_type: str | None, content_p
     profile = investor_type or "general crypto investor"
     content = ", ".join(content_preferences[:5]) or "market news, prices, learning, and humor"
     return (
-        "Write one concise educational crypto market insight for a dashboard. "
-        "Do not provide personalized financial advice, price predictions, trade instructions, "
-        "or buy/sell recommendations. Include a brief not-financial-advice reminder. "
+        "Write one general educational crypto market insight for a dashboard. "
+        "Use plain text only, with no markdown, no bullet points, and no headings. "
+        "Write 2 to 4 short sentences. "
+        "Do not include price predictions, buy/sell/hold advice, trade instructions, entry points, "
+        "or breakout/rally signals. "
+        "Focus on context, risk awareness, or learning. "
         f"User profile: {profile}. Preferred assets: {assets}. Content interests: {content}."
     )
 
@@ -96,10 +99,16 @@ def get_ai_insight(
             json={
                 "model": settings.openrouter_model,
                 "messages": [
-                    {"role": "system", "content": "You write safe, concise crypto education."},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You write safe, general crypto education for a dashboard. "
+                            "Never provide trading advice, price predictions, signals, markdown, or bullet points."
+                        ),
+                    },
                     {"role": "user", "content": prompt},
                 ],
-                "max_tokens": 140,
+                "max_tokens": 90,
                 "temperature": 0.4,
             },
             timeout=12.0,
