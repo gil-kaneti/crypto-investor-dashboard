@@ -13,6 +13,23 @@ from app.schemas.dashboard import AIInsightSection
 logger = logging.getLogger(__name__)
 
 DISCLAIMER = "Educational information only. Not financial advice."
+OPENROUTER_SYSTEM_PROMPT = (
+    "You write safe, general crypto education for a dashboard. "
+    "Return only the final dashboard insight, not instructions, reasoning, or analysis. "
+    "Write 2 to 4 short sentences in plain text only. "
+    "Do not use markdown, bullet points, headings, or prompt-instruction language. "
+    "Do not include phrases like 'we need to', 'the user is', or 'I should'. "
+    "Do not include price predictions, buy/sell/hold advice, trade instructions, entry or exit points, "
+    "or breakout/rally signals. "
+    "Keep the insight educational, general, and focused on context, risk awareness, or learning."
+)
+PROMPT_LEAK_PHRASES = (
+    "we need to",
+    "plain text only",
+    "no markdown",
+    "the user is",
+    "i should",
+)
 FALLBACK_INSIGHT = (
     "A useful crypto dashboard habit is to separate price movement from thesis movement. "
     "Short-term volatility can be noisy, while adoption, liquidity, developer activity, "
@@ -39,19 +56,16 @@ def _cache_key(crypto_assets: list[str], investor_type: str | None) -> str:
     return f"daily:{today}:{investor_type or 'general'}:{assets or 'default'}"
 
 
-def _build_prompt(crypto_assets: list[str], investor_type: str | None, content_preferences: list[str]) -> str:
+def _build_user_context(crypto_assets: list[str], investor_type: str | None, content_preferences: list[str]) -> str:
     assets = ", ".join(crypto_assets[:5]) or "Bitcoin, Ethereum, and Solana"
     profile = investor_type or "general crypto investor"
     content = ", ".join(content_preferences[:5]) or "market news, prices, learning, and humor"
-    return (
-        "Write one general educational crypto market insight for a dashboard. "
-        "Use plain text only, with no markdown, no bullet points, and no headings. "
-        "Write 2 to 4 short sentences. "
-        "Do not include price predictions, buy/sell/hold advice, trade instructions, entry points, "
-        "or breakout/rally signals. "
-        "Focus on context, risk awareness, or learning. "
-        f"User profile: {profile}. Preferred assets: {assets}. Content interests: {content}."
-    )
+    return f"User profile: {profile}. Preferred assets: {assets}. Content interests: {content}."
+
+
+def _looks_like_prompt_leak(insight: str) -> bool:
+    normalized = insight.lower()
+    return any(phrase in normalized for phrase in PROMPT_LEAK_PHRASES)
 
 
 def get_ai_insight(
@@ -88,7 +102,7 @@ def get_ai_insight(
         logger.warning("OpenRouter AI insight fallback: missing OPENROUTER_API_KEY")
         return _fallback_section()
 
-    prompt = _build_prompt(crypto_assets, investor_type, content_preferences)
+    user_context = _build_user_context(crypto_assets, investor_type, content_preferences)
     try:
         response = httpx.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -99,14 +113,8 @@ def get_ai_insight(
             json={
                 "model": settings.openrouter_model,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You write safe, general crypto education for a dashboard. "
-                            "Never provide trading advice, price predictions, signals, markdown, or bullet points."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
+                    {"role": "system", "content": OPENROUTER_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_context},
                 ],
                 "max_tokens": 90,
                 "temperature": 0.4,
@@ -132,9 +140,13 @@ def get_ai_insight(
         logger.warning("OpenRouter AI insight fallback: empty response text")
         return _fallback_section()
 
+    if _looks_like_prompt_leak(insight):
+        logger.warning("OpenRouter AI insight fallback: prompt leak detected")
+        return _fallback_section()
+
     cache = AIInsightCache(
         cache_key=key,
-        prompt_hash=sha256(prompt.encode("utf-8")).hexdigest(),
+        prompt_hash=sha256(user_context.encode("utf-8")).hexdigest(),
         response_text=insight,
         metadata_={"source": "openrouter", "model": settings.openrouter_model},
         expires_at=datetime.now(UTC) + timedelta(hours=24),
