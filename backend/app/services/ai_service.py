@@ -68,6 +68,32 @@ def _looks_like_prompt_leak(insight: str) -> bool:
     return any(phrase in normalized for phrase in PROMPT_LEAK_PHRASES)
 
 
+def _extract_openrouter_insight(payload: dict) -> str:
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        logger.warning("OpenRouter AI insight fallback: unexpected response shape choices_type=%s", type(choices).__name__)
+        return ""
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not isinstance(message, dict):
+        logger.warning("OpenRouter AI insight fallback: unexpected response shape message_type=%s", type(message).__name__)
+        return ""
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = [part.get("text", "") for part in content if isinstance(part, dict)]
+        insight = " ".join(part.strip() for part in parts if part.strip()).strip()
+        if not insight:
+            logger.warning("OpenRouter AI insight fallback: unexpected response shape content_list_text_empty")
+        return insight
+
+    logger.warning("OpenRouter AI insight fallback: unexpected response shape content_type=%s", type(content).__name__)
+    return ""
+
+
 def get_ai_insight(
     db: Session,
     crypto_assets: list[str],
@@ -123,7 +149,7 @@ def get_ai_insight(
         )
         response.raise_for_status()
         payload = response.json()
-        insight = payload["choices"][0]["message"]["content"].strip()
+        insight = _extract_openrouter_insight(payload)
     except httpx.HTTPStatusError as exc:
         response_text = exc.response.text.replace("\n", " ")[:300]
         logger.warning(
