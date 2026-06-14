@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+import logging
 
 import httpx
 from sqlalchemy import select
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.ai_insight_cache import AIInsightCache
 from app.schemas.dashboard import AIInsightSection
+
+logger = logging.getLogger(__name__)
 
 DISCLAIMER = "Educational information only. Not financial advice."
 FALLBACK_INSIGHT = (
@@ -72,7 +75,14 @@ def get_ai_insight(
             disclaimer=DISCLAIMER,
         )
 
+    logger.info(
+        "OpenRouter AI insight config: api_key_configured=%s model=%s",
+        bool(settings.openrouter_api_key),
+        settings.openrouter_model,
+    )
+
     if not settings.openrouter_api_key:
+        logger.warning("OpenRouter AI insight fallback: missing OPENROUTER_API_KEY")
         return _fallback_section()
 
     prompt = _build_prompt(crypto_assets, investor_type, content_preferences)
@@ -97,10 +107,20 @@ def get_ai_insight(
         response.raise_for_status()
         payload = response.json()
         insight = payload["choices"][0]["message"]["content"].strip()
-    except Exception:
+    except httpx.HTTPStatusError as exc:
+        response_text = exc.response.text.replace("\n", " ")[:300]
+        logger.warning(
+            "OpenRouter AI insight fallback: http_status=%s response_text=%s",
+            exc.response.status_code,
+            response_text,
+        )
+        return _fallback_section()
+    except Exception as exc:
+        logger.warning("OpenRouter AI insight fallback: exception_type=%s", type(exc).__name__)
         return _fallback_section()
 
     if not insight:
+        logger.warning("OpenRouter AI insight fallback: empty response text")
         return _fallback_section()
 
     cache = AIInsightCache(
